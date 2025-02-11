@@ -1,4 +1,5 @@
 import time
+from torch import nn
 import d2l.torch as d2l
 import numpy as np
 import torch
@@ -90,6 +91,51 @@ class Timer:
 
     def cumsum(self):
         return np.array(self.times).cumsum().tolist()
+
+def grad_clipping(net, theta):
+    '''
+    clip the gradient to stablize the training
+    '''
+    if isinstance(net, nn.Module):
+        params = [p for p in net.parameters() if p.requires_grad]
+    else:
+        params = net.params
+    norm = torch.sqrt(sum(torch.sum((p.grad ** 2)) for p in params))
+    if norm > theta:
+        for param in params:
+            param.grad[:] *= theta / norm
+
+
+class Vocab:
+    def __init__(self, tokens, min_freq=0, reserved_tokens=None):
+        # 如果是嵌套列表，展开成单个列表
+        if tokens and isinstance(tokens[0], list):
+            tokens = [token for line in tokens for token in line]
+        # 统计词频
+        counter = {}
+        for token in tokens:
+            counter[token] = counter.get(token, 0) + 1
+        # 保留的特殊符号
+        self.reserved_tokens = reserved_tokens if reserved_tokens else ['<unk>']
+        # 排序词表
+        self.token_freqs = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
+        # 构建词表
+        self.idx_to_token = self.reserved_tokens + [token for token, freq in self.token_freqs if freq >= min_freq]
+        self.token_to_idx = {token: idx for idx, token in enumerate(self.idx_to_token)}
+
+    def __len__(self):
+        return len(self.idx_to_token)
+
+    def __getitem__(self, tokens):
+        if not isinstance(tokens, (list, tuple)):
+            # 返回 '<unk>' 索引，如果找不到该 token
+            return self.token_to_idx.get(tokens, self.token_to_idx['<unk>'])
+        return [self.__getitem__(token) for token in tokens]
+
+    def to_tokens(self, indices):
+        if not isinstance(indices, (list, tuple)):
+            return self.idx_to_token[indices]
+        return [self.idx_to_token[index] for index in indices]
 
 
 if __name__ == '__main__':
