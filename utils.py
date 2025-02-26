@@ -1,8 +1,10 @@
 import time
-from torch import nn
-import d2l.torch as d2l
+import collections
+
 import numpy as np
 import torch
+from torch import nn
+import d2l.torch as d2l
 import matplotlib.pyplot as plt
 from IPython import display
 
@@ -105,24 +107,32 @@ def grad_clipping(net, theta):
         for param in params:
             param.grad[:] *= theta / norm
 
+def count_corpus(tokens):
+    if len(tokens) == 0 or isinstance(tokens[0], list):
+        # 如果是嵌套列表，展开成单个列表
+        tokens = [token for line in tokens for token in line]
+    return collections.Counter(tokens)
+
+def load_array(data_arrays, batch_size, is_train=True):
+    """Construct a PyTorch data iterator."""
+    dataset = torch.utils.data.TensorDataset(*data_arrays)
+    return torch.utils.data.DataLoader(dataset, batch_size, shuffle=is_train)
 
 class Vocab:
-    def __init__(self, tokens, min_freq=0, reserved_tokens=None):
-        # 如果是嵌套列表，展开成单个列表
-        if tokens and isinstance(tokens[0], list):
-            tokens = [token for line in tokens for token in line]
-        # 统计词频
-        counter = {}
-        for token in tokens:
-            counter[token] = counter.get(token, 0) + 1
-        # 保留的特殊符号
-        self.reserved_tokens = reserved_tokens if reserved_tokens else ['<unk>']
-        # 排序词表
-        self.token_freqs = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
+    def __init__(self, tokens=[], min_freq=0, reserved_tokens=[]):
+        counter = count_corpus(tokens)
+        # 排序词表，高频在前
+        self._token_freqs = sorted(counter.items(), key=lambda x: x[1], reverse=True)
         # 构建词表
-        self.idx_to_token = self.reserved_tokens + [token for token, freq in self.token_freqs if freq >= min_freq]
+        self.idx_to_token = ['<unk>'] + reserved_tokens
         self.token_to_idx = {token: idx for idx, token in enumerate(self.idx_to_token)}
-
+        for token, freq in self._token_freqs:
+            if freq < min_freq:
+                break
+            if token not in self.token_to_idx:
+                self.idx_to_token.append(token)
+                self.token_to_idx[token] = len(self.idx_to_token) - 1
+        
     def __len__(self):
         return len(self.idx_to_token)
 
@@ -137,6 +147,13 @@ class Vocab:
             return self.idx_to_token[indices]
         return [self.idx_to_token[index] for index in indices]
 
+    @property
+    def unk(self):
+        return self.token_to_idx['<unk>']
+    
+    @property
+    def token_freqs(self):
+        return self._token_freqs
 
 if __name__ == '__main__':
     pass
